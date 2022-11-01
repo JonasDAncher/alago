@@ -9,17 +9,13 @@ class Player:
 
     def change_flow(self,amount):
         self.flow_in = amount
-
-    def __repr__(self):
-        return '\nnode id = {0}, edges: \n{1}'.format(self.id, self.edges)
  
 class Edge:
-    def __init__(self, start: int, end: int, capacity: int, infinite: int):
-        self.infinite = infinite
+    def __init__(self, start: int, end: int, capacity: int):
         self.start    = start
         self.end      = end
         self.ab_residual  = capacity
-        self.ba_residual  = capacity
+        self.ba_residual  = 0
 
     def get_residual(self, origin: int):
         return self.ab_residual if origin == self.start else self.ba_residual
@@ -36,69 +32,79 @@ class Edge:
         else:
             self.ba_residual = amount 
 
-    def __repr__(self):
-        return 'Edge start: {0} End: {1} capacity ab: {2} capacity ba: {3}\n'.format(self.start, self.end, self.ab_residual, self.ba_residual)
-
+edges   = [] # Collection of edges
 players = [] # Collection of nodes
-edges = [] # Collection of edges
 
 def main():
-    parse()
-    # print(players)
-    # print(edges)
+    num_players = parse()
+
     path = find_path()
     while path:
         augment(path)
         path = find_path()
+
+    # Count how many shots have been fired.
+    shots = 0
+    for edge in edges:
+        if edge.start == 0 or edge.end == num_players*2+1: # If looking at source or sink, ignore
+            continue
+        if edge.ba_residual == 0: # A shots been fired, increment counter
+            shots += 1
     
-    # print(summarise()) # Comment to remove printing of flow
-
-
-    min_cut = get_min_cut()
-    for id in range(len(min_cut)):
-        if min_cut[id].ab_residual == 0:
-            print(id)
-        # print(id)
-    
-    # for edge in min_cut: # Comment to remove min-cut printing.
-    #     edge.pretty_print()
-
-def summarise():
-    sum = 0
-    for edge in players[len(players)-1].edges.values():
-        sum += edge.ba_residual
-    return sum
+    if shots != num_players: # If all players haven't shot, print impossible
+        print("Impossible")
+    else:
+        for player in range(1,num_players+1):
+            for edge in players[player].edges.values():
+                if edge.start == 0:         # If edge starts in source, ignore
+                    continue
+                if edge.ab_residual == 0:   # If there's been fired a shot from a to b, print b
+                    print(edge.end-num_players)    
 
 def parse():
     num_players, lines = input().split()
     num_players, lines = int(num_players), int(lines)
 
+    # Add all player nodes (player and player-prime) plus source and sink
     players.append(Player(0))
-
-    for player in range(1,num_players+1):
-        edge = Edge(0, player, 1, True)
-        players[0].add_edge(player,edge)
-
-    for player in range(1,num_players*2+1):        
+    for player in range(1, num_players * 2 + 1):        
         players.append(Player(player))
+    sink = Player(num_players*2+1)
+    players.append(sink)
 
+    # Add edge between source and players
+    for player in range(1, num_players + 1):
+        edge = Edge(0, player, 1)
+        players[0].add_edge(player,edge)
+        players[player].add_edge(0,edge)
+        edges.append(edge)
+
+    # Add edge between players and player-prime
     for _ in range(lines):
         shooter,target = input().split(" ")
         shooter,target = ((int(shooter)),(int(target)))
-        edge    = Edge(target, num_players+shooter, 10000, False) 
-        edgeDup = Edge(shooter, num_players+target, 10000, False) 
-        edges.append(edge)
-        # players[shooter].add_edge(target,edge)
-        players[shooter].add_edge(num_players+target,edgeDup)
-        players[target].add_edge(num_players+shooter,edge)
 
+        edge    = Edge(target, num_players + shooter, 1) 
+        edgeDup = Edge(shooter, num_players + target, 1) 
 
-    sink = Player(num_players*2+1)
-    players.append(sink)
-    for player in range(4,num_players*2+1):
-        edge = Edge(player,sink.id, 1, True)
         edges.append(edge)
-        players[player].add_edge(sink.id,edge)
+        edges.append(edgeDup)
+
+        players[shooter].add_edge(num_players + target,edgeDup)
+        players[target].add_edge(num_players + shooter,edge)
+
+        players[num_players + target].add_edge(shooter,edgeDup)
+        players[num_players + shooter].add_edge(target,edge)
+
+    # Add edge between player-prime and sink
+    for player in range(num_players + 1, sink.id):
+        edge = Edge(player, sink.id, 1)
+        edges.append(edge)
+        players[player].add_edge(sink.id, edge)
+        players[sink.id].add_edge(player, edge)
+
+    return num_players # Returning amount of players for use in printing logic
+
 
 def augment(used_nodes):
     flow = 1
@@ -110,14 +116,6 @@ def augment(used_nodes):
 
         edge = old_node.edges[node.id]
 
-        if old_node.edges[node.id].infinite:
-            old_node = node
-            if edge.ba_residual == -1:
-                edge.ba_residual = flow
-            else:
-                edge.ba_residual = edge.ba_residual + flow 
-            continue
-        
         old_ab_residual = edge.get_residual(old_node.id)
         old_ba_residual = edge.get_residual(node.id)
 
@@ -125,21 +123,6 @@ def augment(used_nodes):
         edge.set_residual(node.id,old_ba_residual+flow)
 
         old_node = node
-
-def find_bottleneck_flow(used_nodes):
-    flow = float("inf")
-    old_node = None
-    for node in used_nodes:
-        if old_node == None or old_node.edges[node.id].infinite:
-            old_node = node
-            continue
-        edge = old_node.edges[node.id]
-        newflow = edge.get_residual(old_node.id)
-        if newflow < flow:
-            flow = newflow
-        old_node = node
-
-    return flow
     
 def find_path():
     source = players[0]
@@ -152,24 +135,10 @@ def DFS(current, end, discovered, path):
         return path + [current]
     for key, edge in current.edges.items(): 
         if key not in discovered and edge.get_residual(current.id) != 0:
-            # print(key)
             p = DFS(players[key], end, discovered, path + [current])
             if p: 
                 return p
     return []
 # https://stackoverflow.com/questions/7375020/depth-first-graph-search-that-returns-path-to-goal
-
-def get_min_cut():
-    discovered = set()
-    source = players[0]
-    sink = players[len(players)-1]
-    DFS(source, sink, discovered, [])
-    min_cut = []
-    for edge in edges:
-        start = edge.start in discovered
-        end = edge.end in discovered
-        if start != end:
-            min_cut.append(edge)
-    return min_cut
     
 main()
