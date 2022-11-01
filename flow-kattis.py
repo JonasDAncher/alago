@@ -48,7 +48,7 @@ def main():
     for edge in edges:
         if edge.start == 0 or edge.end == num_players*2+1: # If looking at source or sink, ignore
             continue
-        if edge.ba_residual == 0: # A shots been fired, increment counter
+        if edge.ba_residual == 1: # A shots been fired, increment counter
             shots += 1
     
     if shots != num_players: # If all players haven't shot, print impossible
@@ -141,4 +141,4 @@ def DFS(current, end, discovered, path):
     return []
 # https://stackoverflow.com/questions/7375020/depth-first-graph-search-that-returns-path-to-goal
     
-main()
+main() 
